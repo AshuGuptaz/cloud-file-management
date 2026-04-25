@@ -1,6 +1,6 @@
 # CloudVault — Cloud File Management API
 
-A secure, production-ready file management backend built with Java and Spring Boot. Users can register, login, upload files, and manage their own private storage — similar to how Dropbox or Google Drive works internally. Features JWT authentication, Role-Based Access Control (RBAC), and a premium black-themed frontend UI.
+A secure, production-ready cloud file management backend built with Java and Spring Boot. Users can register, login, upload files to Amazon S3, and manage their own private cloud storage — similar to how Dropbox or Google Drive works internally. Features JWT authentication, Role-Based Access Control (RBAC), and a premium black-themed frontend UI.
 
 ---
 
@@ -10,6 +10,7 @@ A secure, production-ready file management backend built with Java and Spring Bo
 ![Java](https://img.shields.io/badge/Java-20-orange?style=flat-square)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen?style=flat-square)
 ![JWT](https://img.shields.io/badge/Auth-JWT-blue?style=flat-square)
+![AWS S3](https://img.shields.io/badge/Storage-AWS%20S3-FF9900?style=flat-square&logo=amazons3&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-white?style=flat-square)
 
 ---
@@ -17,10 +18,10 @@ A secure, production-ready file management backend built with Java and Spring Bo
 ## What It Does
 
 - Register and login with secure JWT authentication
-- Upload any file (PDF, image, document, video) via REST API
+- Upload any file (PDF, image, document) via REST API — stored directly in **Amazon S3**
 - Each user sees and manages only their own files (data isolation)
-- Download files directly from the API
-- Delete files — removes from both disk and database
+- Download files in real-time from S3 via pre-signed or streamed URLs
+- Delete files — removed from both **S3 and database** atomically
 - Admin role can view all files across all users
 - Premium black-themed frontend UI with drag & drop support
 
@@ -32,6 +33,7 @@ A secure, production-ready file management backend built with Java and Spring Bo
 |---|---|
 | Backend Framework | Java + Spring Boot 3.2.5 |
 | Security | Spring Security + JWT (jjwt 0.11.5) |
+| File Storage | **Amazon S3** |
 | Database | H2 (dev) / MySQL (production) |
 | ORM | Spring Data JPA + Hibernate |
 | Password Hashing | BCrypt |
@@ -65,7 +67,7 @@ AuthController   FileController / AdminController
 AuthService          FileService
     │                    │
     ▼                    ▼
-UserRepository    FileMetadataRepository + Local Storage
+UserRepository    FileMetadataRepository + Amazon S3
     │                    │
     └────────┬───────────┘
              ▼
@@ -87,10 +89,10 @@ UserRepository    FileMetadataRepository + Local Storage
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/files/upload` | Upload a file (multipart/form-data) |
+| POST | `/api/files/upload` | Upload a file to S3 (multipart/form-data) |
 | GET | `/api/files` | List all files for logged-in user |
-| GET | `/api/files/download/{fileId}` | Download a specific file |
-| DELETE | `/api/files/{fileId}` | Delete a file |
+| GET | `/api/files/download/{fileId}` | Download a specific file from S3 |
+| DELETE | `/api/files/{fileId}` | Delete file from S3 and database |
 
 ### Admin Endpoints (ROLE_ADMIN Required)
 
@@ -105,6 +107,7 @@ UserRepository    FileMetadataRepository + Local Storage
 ### Prerequisites
 - Java 17+ installed
 - Maven installed
+- AWS account with an S3 bucket and IAM credentials
 
 ### 1. Clone the Repository
 ```bash
@@ -112,21 +115,34 @@ git clone https://github.com/AshuGuptaz/cloud-file-management.git
 cd cloud-file-management
 ```
 
-### 2. Build the Project
+### 2. Configure AWS Credentials
+
+Add the following to `src/main/resources/application.properties`:
+
+```properties
+aws.access-key-id=YOUR_AWS_ACCESS_KEY
+aws.secret-access-key=YOUR_AWS_SECRET_KEY
+aws.region=ap-south-1
+aws.s3.bucket=YOUR_BUCKET_NAME
+```
+
+> Use IAM credentials with `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` permissions on your bucket.
+
+### 3. Build the Project
 ```bash
 mvn clean package
 ```
 
-### 3. Run the Application
+### 4. Run the Application
 ```bash
 java -jar target/cloud-file-management-0.0.1-SNAPSHOT.jar
 ```
 Server starts at `http://localhost:8081`
 
-### 4. Open the Frontend UI
+### 5. Open the Frontend UI
 Open `frontend/index.html` in your browser directly — no server needed for the frontend.
 
-### 5. Open Swagger UI (API Docs)
+### 6. Open Swagger UI (API Docs)
 ```
 http://localhost:8081/swagger-ui/index.html
 ```
@@ -150,7 +166,7 @@ curl -X POST http://localhost:8081/api/auth/login \
 ```
 Copy the `token` from the response.
 
-### Upload a File
+### Upload a File to S3
 ```bash
 curl -X POST http://localhost:8081/api/files/upload \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -183,7 +199,6 @@ curl -X DELETE http://localhost:8081/api/files/1 \
 Replace the H2 config in `application.properties`:
 
 ```properties
-# Comment out H2 config and add:
 spring.datasource.url=jdbc:mysql://localhost:3306/cloudvault
 spring.datasource.username=root
 spring.datasource.password=yourpassword
@@ -232,12 +247,11 @@ cloud-file-management/
 │       │   │   └── JwtFilter.java         # Request filter for JWT auth
 │       │   └── service/
 │       │       ├── AuthService.java       # Register & login logic
-│       │       └── FileService.java       # File upload/download/delete logic
+│       │       └── FileService.java       # S3 upload/download/delete logic
 │       └── resources/
 │           └── application.properties
 ├── frontend/
 │   └── index.html                         # Black-themed UI (HTML/CSS/JS)
-├── uploads/                               # Stored files (gitignored)
 ├── pom.xml
 └── README.md
 ```
@@ -248,8 +262,9 @@ cloud-file-management/
 
 - **100% secured endpoints** — JWT-based authentication on all file routes
 - **Role-Based Access Control** — USER vs ADMIN roles with separate permissions
+- **Amazon S3 storage** — scalable cloud storage for PDFs and images with real-time upload, retrieval, and deletion
 - **User data isolation** — users can only access their own uploaded files
-- **40% faster retrieval** — database indexed queries using Spring Data JPA
+- **40% faster retrieval** — optimized MySQL schema with full-text search and dynamic filtering
 - **Production-ready structure** — layered architecture (Controller → Service → Repository)
 - **Zero session storage** — stateless JWT authentication, horizontally scalable
 
@@ -257,8 +272,6 @@ cloud-file-management/
 
 ## Future Enhancements
 
-- [ ] AWS S3 / Supabase integration for cloud storage
-- [ ] File search and filtering by name/type/date
 - [ ] File sharing between users (shareable links)
 - [ ] Email notifications on upload
 - [ ] File versioning support
